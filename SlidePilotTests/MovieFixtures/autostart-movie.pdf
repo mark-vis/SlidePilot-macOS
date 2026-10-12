@@ -1,0 +1,37 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 400] /Annots [4 0 R 5 0 R 6 0 R 7 0 R] /AA << /O << /S /Movie /T (page-open) /Operation /Play >> >> >>
+endobj
+4 0 obj
+<< /Type /Annot /Subtype /Movie /T (widget-open) /Rect [10 20 110 120] /Movie << /F (a.mp4) >> >>
+endobj
+5 0 obj
+<< /Type /Annot /Subtype /Movie /T (page-open) /Rect [200 20 300 120] /Movie << /F (b.mp4) >> >>
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Movie /T (manual) /Rect [400 20 500 120] /Movie << /F (c.mp4) >> >>
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Btn /Ff 65537 /T (wid@widget-open) /Rect [0 0 0 0] /AA << /PO << /S /Movie /T (widget-open) /Operation /Play >> >> >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000281 00000 n 
+0000000394 00000 n 
+0000000506 00000 n 
+0000000615 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+786
+%%EOF

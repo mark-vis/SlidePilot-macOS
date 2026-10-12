@@ -19,7 +19,12 @@ precondition(first == second)
 precondition(try! Data(contentsOf: first) == Data("movie-bytes".utf8))
 _ = PDFMovieFiles.shared.url(for: resources[0].file, document: linked)
 precondition(!FileManager.default.fileExists(atPath: first.path))
-print("Passed: annotation discovery, bounds, linked filenames, embedded extraction, shared URLs, cleanup")
+let autostart = PDFDocument(url: URL(fileURLWithPath: fixtureDirectory.appendingPathComponent("autostart-movie.pdf").path))!
+let autostartPage = autostart.page(at: 0)!
+precondition(autostartPage.movieAnnotations().map { $0.title } == ["widget-open", "page-open", "manual"])
+precondition(autostartPage.autostartMovieTitles() == ["widget-open", "page-open"])
+precondition(linked.page(at: 0)!.autostartMovieTitles().isEmpty)
+print("Passed: annotation discovery, bounds, linked filenames, embedded extraction, shared URLs, cleanup, autostart actions")
 
 }
 }

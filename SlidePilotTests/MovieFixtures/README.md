@@ -5,4 +5,4 @@ swiftc -module-cache-path /tmp/slidepilot-module-cache SlidePilot/Helpers/PDFPag
 /tmp/slidepilot-movie-checks "$PWD/SlidePilotTests/MovieFixtures"
 ```
 
-The small PDF fixtures exercise linked filenames, multiple annotations, bounds, embedded stream extraction, stable shared URLs, and cleanup on document replacement. The embedded stream contains test bytes rather than a playable video. Actual audio/video playback and window interactions require manual testing in the app.
+The small PDF fixtures exercise linked filenames, multiple annotations, bounds, embedded stream extraction, stable shared URLs, cleanup on document replacement, and autostart actions (a widget's page-open action as written by beamer's `\movie[autostart]`, and the page's own open action). The embedded stream contains test bytes rather than a playable video. Actual audio/video playback and window interactions require manual testing in the app.

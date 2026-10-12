@@ -38,10 +38,15 @@ extension PDFPage {
 // reliably expose embedded file streams.
 extension PDFPage {
     func movieResources() -> [(bounds: CGRect, file: CGPDFObjectRef)] {
+        return movieAnnotations().map { ($0.bounds, $0.file) }
+    }
+
+    /// Movie annotations with their title (/T), which autostart actions refer to.
+    func movieAnnotations() -> [(bounds: CGRect, file: CGPDFObjectRef, title: String?)] {
         guard let page = pageRef, let dictionary = page.dictionary else { return [] }
         var annotations: CGPDFArrayRef?
         guard CGPDFDictionaryGetArray(dictionary, "Annots", &annotations), let array = annotations else { return [] }
-        var result = [(bounds: CGRect, file: CGPDFObjectRef)]()
+        var result = [(bounds: CGRect, file: CGPDFObjectRef, title: String?)]()
         for index in 0..<CGPDFArrayGetCount(array) {
             var annotation: CGPDFDictionaryRef?
             guard CGPDFArrayGetDictionary(array, index, &annotation), let entry = annotation else { continue }
@@ -60,10 +65,53 @@ extension PDFPage {
                 values[i] = CGFloat(number)
             }
             guard valid else { continue }
+            var title: CGPDFStringRef?
+            let name = CGPDFDictionaryGetString(entry, "T", &title) ? title.flatMap { CGPDFStringCopyTextString($0) as String? } : nil
             result.append((CGRect(x: min(values[0], values[2]), y: min(values[1], values[3]),
-                                  width: abs(values[2] - values[0]), height: abs(values[3] - values[1])), specification))
+                                  width: abs(values[2] - values[0]), height: abs(values[3] - values[1])), specification, name))
         }
         return result
+    }
+
+    /// Titles of the movies this page plays when it is opened: a Movie action with
+    /// /Operation /Play in the page's /AA /O, or in a widget's /AA /PO (how beamer's
+    /// multimedia package writes `\movie[autostart]` under pdfTeX/LuaTeX).
+    func autostartMovieTitles() -> Set<String> {
+        guard let page = pageRef, let dictionary = page.dictionary else { return [] }
+        var titles = Set<String>()
+        func collect(_ additionalActions: CGPDFDictionaryRef, keys: [String]) {
+            for key in keys {
+                var action: CGPDFDictionaryRef?
+                guard CGPDFDictionaryGetDictionary(additionalActions, key, &action), let action = action else { continue }
+                var type: UnsafePointer<CChar>?
+                guard CGPDFDictionaryGetName(action, "S", &type), let type = type,
+                      String(cString: type) == "Movie" else { continue }
+                var operation: UnsafePointer<CChar>?
+                if CGPDFDictionaryGetName(action, "Operation", &operation), let operation = operation,
+                   String(cString: operation) != "Play" { continue }
+                var title: CGPDFStringRef?
+                if CGPDFDictionaryGetString(action, "T", &title), let title = title,
+                   let text = CGPDFStringCopyTextString(title) {
+                    titles.insert(text as String)
+                }
+            }
+        }
+        var pageActions: CGPDFDictionaryRef?
+        if CGPDFDictionaryGetDictionary(dictionary, "AA", &pageActions), let pageActions = pageActions {
+            collect(pageActions, keys: ["O"])
+        }
+        var annotations: CGPDFArrayRef?
+        if CGPDFDictionaryGetArray(dictionary, "Annots", &annotations), let array = annotations {
+            for index in 0..<CGPDFArrayGetCount(array) {
+                var annotation: CGPDFDictionaryRef?
+                var additionalActions: CGPDFDictionaryRef?
+                guard CGPDFArrayGetDictionary(array, index, &annotation), let entry = annotation,
+                      CGPDFDictionaryGetDictionary(entry, "AA", &additionalActions),
+                      let actions = additionalActions else { continue }
+                collect(actions, keys: ["PO"])
+            }
+        }
+        return titles
     }
 }
 
