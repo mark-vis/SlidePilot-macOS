@@ -205,6 +205,10 @@ class PDFPageView: NSImageView {
     /// Player views in annotation order, paired with `movieBounds`.
     private var movieViews = [NSView]()
     private var movieBounds = [CGRect]()
+    /// Per entry of `movieViews`: its file, whether its page autostarts it, and its AVPlayer (nil for web players).
+    private var movieURLs = [URL]()
+    private var movieAutostart = [Bool]()
+    private var moviePlayers = [AVPlayer?]()
     private var movieGeneration = 0
     private var loopObservers = [NSObjectProtocol]()
 
@@ -242,13 +246,31 @@ class PDFPageView: NSImageView {
         webPlayerViews.removeAll()
         movieViews.removeAll()
         movieBounds.removeAll()
+        movieURLs.removeAll()
+        movieAutostart.removeAll()
+        moviePlayers.removeAll()
     }
 
     private func embedVideo() {
-        removeMovies()
         // Previews remain PDF posters; only the current slide gets live players.
         guard currentPage == PageController.currentPage,
-              let document = pdfDocument else { return }
+              let document = pdfDocument,
+              let page = document.page(at: currentPage) else { removeMovies(); return }
+        // Overlay builds (e.g. beamer \pause) repeat the same movie at the same
+        // place on consecutive pages. Keep those players, so the movie neither
+        // restarts nor flashes black at every build step.
+        let movies = pageMovies(on: page)
+        if !movieViews.isEmpty, movies.count == movieViews.count,
+           zip(movies, zip(movieURLs, movieBounds)).allSatisfy({ movie, old in
+               movie.url == old.0 && Self.sameRect(movie.bounds, old.1)
+           }) {
+            let previousAutostart = movieAutostart
+            movieAutostart = movies.map { $0.autostart }
+            layoutMovies()
+            startAutostartMovies(previouslyStarted: previousAutostart)
+            return
+        }
+        removeMovies()
         let generation = movieGeneration
         DispatchQueue.main.async { [weak self, weak document] in
             guard let self = self, let document = document,
@@ -259,26 +281,60 @@ class PDFPageView: NSImageView {
         }
     }
 
+    private func pageMovies(on page: PDFPage) -> [(bounds: CGRect, url: URL, autostart: Bool, loop: Bool)] {
+        let visibleBounds = displayMode.getBounds(for: page)
+        return page.movieResources().compactMap { movie in
+            guard visibleBounds.intersects(movie.bounds),
+                  let url = PDFMovieFiles.shared.url(for: movie.file, document: pdfDocument) else { return nil }
+            return (movie.bounds, url, movie.autostart, movie.loop)
+        }
+    }
+
+    private static func sameRect(_ a: CGRect, _ b: CGRect) -> Bool {
+        return abs(a.minX - b.minX) < 0.5 && abs(a.minY - b.minY) < 0.5
+            && abs(a.width - b.width) < 0.5 && abs(a.height - b.height) < 0.5
+    }
+
+    /// This view owns playback; connected views mirror it.
+    private var isPlaybackOwner: Bool {
+        return currentPage == PageController.currentPage && !connectToCurrentPlayer
+            && DisplayController.notesPosition.displayModeForPresentation() == displayMode
+    }
+
+    /// Plays the movies whose page asks for it when opened (beamer `\movie[autostart]`),
+    /// unless the previous build step of the same movie already did. An autostart
+    /// on a later build step thus starts a paused movie on the next click.
+    private func startAutostartMovies(previouslyStarted: [Bool]) {
+        // Only the shared owner plays, so connected views never double the audio.
+        guard isPlaybackOwner else { return }
+        for (index, player) in moviePlayers.enumerated()
+        where movieAutostart[index] && !(index < previouslyStarted.count && previouslyStarted[index]) {
+            guard let player = player else { continue }  // web players autostart themselves
+            if let item = player.currentItem, item.duration.isNumeric,
+               CMTimeCompare(item.currentTime(), item.duration) >= 0 {
+                player.seek(to: .zero)
+            }
+            player.play()
+        }
+    }
+
     private func installMovies() {
         guard let page = pdfDocument?.page(at: currentPage) else { return }
-        let visibleBounds = displayMode.getBounds(for: page)
-        // This view owns playback; connected views mirror it.
-        let isOwner = currentPage == PageController.currentPage && !connectToCurrentPlayer
-            && DisplayController.notesPosition.displayModeForPresentation() == displayMode
-        var autostartPlayers = [AVPlayer]()
-        for movie in page.movieResources() {
-            guard visibleBounds.intersects(movie.bounds),
-                  let url = PDFMovieFiles.shared.url(for: movie.file, document: pdfDocument) else { continue }
-            if let videoID = url.youTubeVideoID {
+        let isOwner = isPlaybackOwner
+        for movie in pageMovies(on: page) {
+            movieBounds.append(movie.bounds)
+            movieURLs.append(movie.url)
+            movieAutostart.append(movie.autostart)
+            if let videoID = movie.url.youTubeVideoID {
                 let webView = WebMoviePlayer(videoID: videoID, isLeader: isOwner, autostart: movie.autostart,
                                              loop: movie.loop, controls: areVideoPlayerControlsEnabled)
                 addSubview(webView, positioned: .below, relativeTo: coverView)
                 webPlayerViews.append(webView)
                 movieViews.append(webView)
-                movieBounds.append(movie.bounds)
+                moviePlayers.append(nil)
                 continue
             }
-            let player = AVPlayer(url: url)
+            let player = AVPlayer(url: movie.url)
             let playerView = ConnectedPlayer()
             playerView.player = player
             playerView.areControlsEnabled = areVideoPlayerControlsEnabled
@@ -287,8 +343,7 @@ class PDFPageView: NSImageView {
             players.append(player)
             playerViews.append(playerView)
             movieViews.append(playerView)
-            movieBounds.append(movie.bounds)
-            if movie.autostart { autostartPlayers.append(player) }
+            moviePlayers.append(player)
             if movie.loop {
                 // Rewind at the end; removeMovies drops the observer on slide change.
                 player.actionAtItemEnd = .none
@@ -302,9 +357,8 @@ class PDFPageView: NSImageView {
         layoutMovies()
         if isOwner {
             ConnectedPlayer.sharedPlayers = players
-            // Only the shared owner plays, so connected views never double the audio.
-            autostartPlayers.forEach { $0.play() }
         }
+        startAutostartMovies(previouslyStarted: [])
     }
 
     override func layout() {
